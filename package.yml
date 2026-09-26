@@ -1,0 +1,106 @@
+name: 7zip
+title: 7-Zip
+summary: Creates, extracts and tests 7z, zip, tar, xz, gzip and bzip2 archives, and unpacks RAR, ISO, DMG, CAB and many other formats.
+homepage: https://www.7-zip.org/
+# The RAR decoders are under the LGPL with the unRAR license restriction,
+# which has no SPDX identifier (see DOC/License.txt in the source tarball).
+license: LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-7-Zip-unRAR
+source-release: true
+upstream:
+  source: github-release
+  repository: ip7z/7zip
+  # Release tags look like 26.03. The minor part keeps its leading zero, so
+  # the versions are not semver; the source tarball is 7z2603-src.tar.xz.
+  tag-pattern: '^(\d+\.\d{2})$'
+  version-template: '{1}'
+  versioning: loose
+  version: "26.03"
+  artifact:
+    url: https://github.com/ip7z/7zip/releases/download/{version}/7z{nodots}-src.tar.xz
+    sha256: 9cbde5099c6deb73691b0579063da5827522ccbbcba3f0020fd04e8c8c16c0d4
+image:
+  entrypoint: [7zz]
+  cmd: [--help]
+test:
+  - |
+    7zz i > info.txt
+    grep -Fq "7-Zip (z) $VERSION (" info.txt
+    # 7-Zip prints UTF8=- when the locale cannot represent non-ASCII file names.
+    if grep -Fq 'UTF8=-' info.txt; then cat info.txt >&2; exit 1; fi
+    7zz --help > help.txt
+    grep -q '^Usage: 7zz ' help.txt
+    test "$(readlink /usr/local/bin/7z)" = 7zz
+    7z i > link.txt
+    grep -Fq "7-Zip (z) $VERSION (" link.txt
+  - |
+    # Every format and codec is compiled into 7zz, including the RAR decoders.
+    7zz i > info.txt
+    awk '/^Formats:/ { s = "format"; next } /^Codecs:/ { s = "codec"; next } /^Hashers:/ { s = "" }
+      s == "format" { print s, ($2 ~ /^[wudn.]+[0-9]+$/ ? $3 : $2) }
+      s == "codec" { print s, $NF }' info.txt > features.txt
+    for f in 'format 7z' 'format zip' 'format tar' 'format xz' 'format gzip' 'format bzip2' 'format wim' \
+      'format Rar' 'format Rar5' 'format Iso' 'format Udf' 'format Dmg' 'format Cab' 'format zstd' \
+      'codec LZMA' 'codec LZMA2' 'codec PPMD' 'codec BZip2' 'codec Deflate' 'codec Deflate64' \
+      'codec 7zAES' 'codec AES256CBC' 'codec Rar1' 'codec Rar2' 'codec Rar3' 'codec Rar5'; do
+      grep -qxF "$f" features.txt || { echo "missing: $f" >&2; cat info.txt >&2; exit 1; }
+    done
+  - |
+    mkdir -p data/sub/empty
+    head -c 1048576 /dev/urandom > data/random.bin
+    i=0
+    while [ "$i" -lt 5000 ]; do echo "line $i of a text file that compresses well"; i=$((i + 1)); done > data/sub/text.txt
+    echo 'a file with a non-ASCII name' > "data/sub/$(printf 'caf\303\251 \342\202\254.txt')"
+    sums() { (cd "$1" && find . -type f -exec sha256sum {} + | LC_ALL=C sort); }
+    sums data > want.txt
+
+    # 7z with LZMA2 on two threads, AES-256 and encrypted file names
+    7zz a -t7z -mx=5 -mmt=2 -mhe=on -psecret a.7z data > /dev/null
+    7zz t -psecret a.7z > /dev/null
+    if 7zz t -pwrong a.7z > /dev/null 2>&1; then echo "wrong password accepted" >&2; exit 1; fi
+    7zz x -psecret -oout-7z a.7z > /dev/null
+    sums out-7z/data > got.txt
+    cmp want.txt got.txt
+    test -d out-7z/data/sub/empty
+
+    # zip with Deflate and AES-256
+    7zz a -tzip -mm=Deflate -mem=AES256 -psecret a.zip data > /dev/null
+    test "$(head -c 4 a.zip | od -An -tx1 | tr -d ' \n')" = 504b0304
+    7zz x -psecret -oout-zip a.zip > /dev/null
+    sums out-zip/data > got.txt
+    cmp want.txt got.txt
+  - |
+    mkdir -p files
+    head -c 1048576 /dev/urandom > files/random.bin
+    i=0
+    while [ "$i" -lt 5000 ]; do echo "line $i of a text file that compresses well"; i=$((i + 1)); done > files/text.txt
+    7zz a -ttar files.tar files > /dev/null
+    7zz a -txz -mx=9 -mmt=2 files.tar.xz files.tar > /dev/null
+    # A Delta filter in front of LZMA2 makes the xz decoder chain two coders.
+    7zz a -txz -mf=Delta:4 delta.tar.xz files.tar > /dev/null
+    7zz a -tgzip files.tar.gz files.tar > /dev/null
+    7zz a -tbzip2 files.tar.bz2 files.tar > /dev/null
+    test "$(head -c 6 files.tar.xz | od -An -tx1 | tr -d ' \n')" = fd377a585a00
+    test "$(head -c 6 delta.tar.xz | od -An -tx1 | tr -d ' \n')" = fd377a585a00
+    test "$(head -c 2 files.tar.gz | od -An -tx1 | tr -d ' \n')" = 1f8b
+    test "$(head -c 3 files.tar.bz2)" = BZh
+    for f in files.tar.xz delta.tar.xz files.tar.gz files.tar.bz2; do
+      7zz t "$f" > /dev/null
+      7zz x -so "$f" > round.tar
+      cmp files.tar round.tar
+    done
+    7zz x -oout-tar files.tar > /dev/null
+    cmp files/random.bin out-tar/files/random.bin
+    cmp files/text.txt out-tar/files/text.txt
+    # Streams: compress from stdin and extract to stdout.
+    7zz a -si -txz stdin.xz < files/text.txt > /dev/null
+    7zz x -so stdin.xz > stdout.txt
+    cmp files/text.txt stdout.txt
+examples:
+  - title: Extract an archive into the current directory
+    command: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/randomcontainers/7zip x archive.7z
+  - title: Pack a directory into a 7z archive with maximum compression
+    command: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/randomcontainers/7zip a -mx=9 backup.7z project/
+  - title: List the files in a RAR archive
+    command: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/randomcontainers/7zip l archive.rar
+  - title: Test an archive without extracting it
+    command: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/randomcontainers/7zip t archive.zip
