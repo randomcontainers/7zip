@@ -11,8 +11,6 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/randomcontain
   x archive.7z
 ```
 
-The same images can also be pulled as `randomcontainers.com/7zip`.
-
 Pack a directory into a 7z archive with maximum compression:
 
 ```sh
