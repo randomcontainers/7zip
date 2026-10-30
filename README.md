@@ -50,7 +50,7 @@ Without arguments the image prints `7zz --help`, the list of commands and switch
 
 ## Default or slim
 
-7-Zip's default image adds no other tools, so `latest` and `slim` are the same image, with the contents listed above. Use `latest` to run it and the `slim` tags as a base for your own image. The default image of [YARA](https://github.com/randomcontainers/yara) includes this build of 7-Zip.
+7-Zip's default image adds no other tools, so `latest` and `slim` are the same image, with the contents listed above. Use `latest` to run it and the `slim` tags as a base for your own image. The default images of [YARA](https://github.com/randomcontainers/yara) and [YARA-X](https://github.com/randomcontainers/yara-x) include this build of 7-Zip.
 
 ## Tags
 
