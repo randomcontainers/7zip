@@ -14,10 +14,10 @@ upstream:
   tag-pattern: '^(\d+\.\d{2})$'
   version-template: '{1}'
   versioning: loose
-  version: "26.05"
+  version: "26.06"
   artifact:
     url: https://github.com/ip7z/7zip/releases/download/{version}/7z{nodots}-src.tar.xz
-    sha256: 0b6080b8c3e7a579161d2d495224c0e51c467576cb4c7048b0ab485ef44cc22e
+    sha256: a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4
 image:
   entrypoint: [7zz]
   cmd: [--help]
